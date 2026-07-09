@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tinytech Bill Generator</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="app-header no-print">
+    <div>
+      <p class="eyebrow">Tinytech</p>
+      <h1>Tinytech Bill Generator</h1>
+    </div>
+    <p class="header-note">Create, save, and print professional Tinytech order invoices.</p>
+  </header>
+
+  <main class="app-shell">
+    <!-- Main form and live invoice preview -->
+    <section class="workspace">
+      <form id="billForm" class="form-panel no-print" novalidate>
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Bill input form</p>
+            <h2>Order Details</h2>
+          </div>
+          <button type="button" id="clearFormBtn" class="button button-light">Clear Form</button>
+        </div>
+
+        <div id="messageArea" class="message-area" aria-live="polite"></div>
+
+        <fieldset>
+          <legend>Business Information</legend>
+          <div class="field-grid">
+            <label>
+              <span>Business name</span>
+              <input type="text" id="businessName" value="Tinytech">
+            </label>
+            <label>
+              <span>Business email</span>
+              <input type="email" id="businessEmail" value="tinytechbd25@gmail.com" readonly>
+            </label>
+            <label>
+              <span>Business phone</span>
+              <input type="tel" id="businessPhone" value="01825-550651" readonly>
+            </label>
+            <label>
+              <span>Business website</span>
+              <input type="url" id="businessWebsite" value="tinytechbd.com" readonly>
+            </label>
+            <label class="wide">
+              <span>Business address</span>
+              <textarea id="businessAddress" rows="3" readonly>60/1, Green Road, Dhaka - 1205, Bangladesh</textarea>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Order Information</legend>
+          <div class="field-grid">
+            <label>
+              <span>Order number <strong>*</strong></span>
+              <input type="text" id="orderNumber" placeholder="TT-0001" required>
+            </label>
+            <div class="field-button">
+              <span>Auto-generate</span>
+              <button type="button" id="generateOrderNumberBtn" class="button button-light">Generate Order No.</button>
+            </div>
+            <label>
+              <span>Order date <strong>*</strong></span>
+              <input type="date" id="orderDate" required>
+            </label>
+            <label>
+              <span>Payment method</span>
+              <select id="paymentMethod">
+                <option>Cash on Delivery</option>
+                <option>bKash</option>
+                <option>Nagad</option>
+                <option>Bank Transfer</option>
+              </select>
+            </label>
+            <label>
+              <span>Shipping type / delivery method</span>
+              <input type="text" id="shippingType" placeholder="Home Delivery">
+            </label>
+            <label>
+              <span>Shipping charge</span>
+              <input type="number" id="shippingCharge" min="0" step="0.01" value="0">
+            </label>
+            <label>
+              <span>Warranty period</span>
+              <input type="text" id="warrantyPeriod" placeholder="Example: 7 days, 6 months, 1 year">
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Vendor Information</legend>
+          <div class="field-grid">
+            <label class="wide">
+              <span>Vendor</span>
+              <select id="vendorName">
+                <option>EZ Gadgets</option>
+                <option>Cybertronics</option>
+                <option>Nawaz Enterprises</option>
+              </select>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Customer Information</legend>
+          <div class="field-grid">
+            <label>
+              <span>Customer name <strong>*</strong></span>
+              <input type="text" id="customerName" required>
+            </label>
+            <label>
+              <span>Customer phone number <strong>*</strong></span>
+              <input type="tel" id="customerPhone" required>
+            </label>
+            <label>
+              <span>Customer email</span>
+              <input type="email" id="customerEmail">
+            </label>
+            <label>
+              <span>City</span>
+              <input type="text" id="city" placeholder="Dhaka">
+            </label>
+            <label>
+              <span>Area</span>
+              <input type="text" id="area" placeholder="Green Road">
+            </label>
+            <label class="wide">
+              <span>Billing address</span>
+              <textarea id="billingAddress" rows="3"></textarea>
+            </label>
+            <label class="checkbox-row wide">
+              <input type="checkbox" id="copyBillingAddress">
+              <span>Copy billing address to shipping address</span>
+            </label>
+            <label class="wide">
+              <span>Shipping address</span>
+              <textarea id="shippingAddress" rows="3"></textarea>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Product Information</legend>
+          <div class="table-wrap">
+            <table class="product-editor">
+              <thead>
+                <tr>
+                  <th>Product name</th>
+                  <th>Quantity</th>
+                  <th>Unit price</th>
+                  <th>Total price</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="productRows"></tbody>
+            </table>
+          </div>
+          <button type="button" id="addProductBtn" class="button button-light">Add Product</button>
+        </fieldset>
+
+        <div class="form-actions">
+          <label class="checkbox-row">
+            <input type="checkbox" id="clearAfterSave">
+            <span>Clear form after successful save</span>
+          </label>
+          <div class="button-row">
+            <button type="button" id="generateBillBtn" class="button button-secondary">Generate Bill</button>
+            <button type="button" id="saveBillBtn" class="button button-primary">Save Bill</button>
+            <button type="button" id="testSheetBtn" class="button button-light">Test Sheet Connection</button>
+            <button type="button" id="printBillBtn" class="button button-light">Print Bill</button>
+            <button type="button" id="downloadPdfBtn" class="button button-light">Download as PDF</button>
+          </div>
+        </div>
+      </form>
+
+      <section class="preview-panel">
+        <div class="preview-heading no-print">
+          <div>
+            <p class="eyebrow">Bill preview/output</p>
+            <h2>Invoice Preview</h2>
+          </div>
+        </div>
+
+        <article id="billPreview" class="invoice invoice-empty">
+          <h2>Tinytech invoice preview</h2>
+          <p>Fill in the form and select Generate Bill to preview the final invoice.</p>
+        </article>
+      </section>
+    </section>
+
+    <!-- Saved bills are loaded from Google Sheets, with browser localStorage as a fallback -->
+    <section id="savedBillsSection" class="saved-bills no-print">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Google Sheet records</p>
+          <h2>Saved Bills</h2>
+        </div>
+      </div>
+      <div id="savedBillsList" class="saved-bills-list"></div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="tinytech-logo-data.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "name": "tinytech-bill-generator",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "npx serve .",
+    "build": "mkdir -p public && cp index.html style.css script.js tinytech-logo-data.js tinytech-logo.png public/",
+    "vercel-build": "npm run build"
+  }
+}
