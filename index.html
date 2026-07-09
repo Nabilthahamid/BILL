@@ -203,6 +203,15 @@
           <h2>Saved Bills</h2>
         </div>
       </div>
+      <form id="savedBillSearchForm" class="saved-bill-search">
+        <label for="savedBillSearchInput">
+          <span>Search by order number</span>
+        </label>
+        <div class="saved-bill-search-row">
+          <input type="text" id="savedBillSearchInput" placeholder="Example: TT-0001" autocomplete="off">
+          <button type="submit" id="savedBillSearchBtn" class="button button-primary">Search Order</button>
+        </div>
+      </form>
       <div id="savedBillsList" class="saved-bills-list"></div>
     </section>
   </main>

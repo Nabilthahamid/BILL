@@ -26,6 +26,7 @@
   - The script writes to the first sheet/tab in the configured spreadsheet.
   - The script will add/fix the header row automatically.
   - If the same Order Number already exists, the save is rejected.
+  - Search requests return the matching Order Number row.
   - Delete requests remove the matching Order Number row.
 */
 
@@ -127,6 +128,17 @@ function doGet(e) {
       });
     }
 
+    if (action === "getBill") {
+      const bill = getBillFromSheet(sheet, e.parameter.orderNumber);
+
+      return createResponse(e, {
+        status: "success",
+        exists: Boolean(bill),
+        bill,
+        sheetName: sheet.getName()
+      });
+    }
+
     if (action === "listBills") {
       return createResponse(e, {
         status: "success",
@@ -218,6 +230,18 @@ function deleteOrderRow(sheet, orderNumber) {
   return false;
 }
 
+function getBillFromSheet(sheet, orderNumber) {
+  const rowNumber = findOrderRow(sheet, orderNumber);
+
+  if (rowNumber < 2) {
+    return null;
+  }
+
+  const row = sheet.getRange(rowNumber, 1, 1, BILL_HEADERS.length).getValues()[0];
+
+  return rowToBillData(row);
+}
+
 function getBillsFromSheet(sheet) {
   if (sheet.getLastRow() < 2) {
     return [];
@@ -227,26 +251,30 @@ function getBillsFromSheet(sheet) {
 
   return values
     .filter((row) => row[1])
-    .map((row) => ({
-      savedAt: row[0],
-      orderNumber: row[1],
-      orderDate: formatSheetDate(row[2]),
-      customerName: row[3],
-      customerPhone: row[4],
-      customerEmail: row[5],
-      billingAddress: row[6],
-      shippingAddress: row[7],
-      city: row[8],
-      area: row[9],
-      vendorName: row[10],
-      paymentMethod: row[11],
-      shippingType: row[12],
-      warrantyPeriod: row[13],
-      productDetails: row[14],
-      subtotal: row[15],
-      shippingCharge: row[16],
-      totalAmount: row[17]
-    }));
+    .map(rowToBillData);
+}
+
+function rowToBillData(row) {
+  return {
+    savedAt: row[0],
+    orderNumber: row[1],
+    orderDate: formatSheetDate(row[2]),
+    customerName: row[3],
+    customerPhone: row[4],
+    customerEmail: row[5],
+    billingAddress: row[6],
+    shippingAddress: row[7],
+    city: row[8],
+    area: row[9],
+    vendorName: row[10],
+    paymentMethod: row[11],
+    shippingType: row[12],
+    warrantyPeriod: row[13],
+    productDetails: row[14],
+    subtotal: row[15],
+    shippingCharge: row[16],
+    totalAmount: row[17]
+  };
 }
 
 function formatSheetDate(value) {

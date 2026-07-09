@@ -19,6 +19,9 @@ const productRows = document.getElementById("productRows");
 const messageArea = document.getElementById("messageArea");
 const billPreview = document.getElementById("billPreview");
 const savedBillsList = document.getElementById("savedBillsList");
+const savedBillSearchForm = document.getElementById("savedBillSearchForm");
+const savedBillSearchInput = document.getElementById("savedBillSearchInput");
+const savedBillSearchBtn = document.getElementById("savedBillSearchBtn");
 const saveBillBtn = document.getElementById("saveBillBtn");
 
 document.addEventListener("DOMContentLoaded", initializeApp);
@@ -43,6 +46,12 @@ function bindEvents() {
   document.getElementById("clearFormBtn").addEventListener("click", clearForm);
   document.getElementById("generateOrderNumberBtn").addEventListener("click", () => {
     document.getElementById("orderNumber").value = getNextOrderNumber();
+  });
+  savedBillSearchForm.addEventListener("submit", handleSavedBillSearch);
+  savedBillSearchInput.addEventListener("input", () => {
+    if (!savedBillSearchInput.value.trim()) {
+      renderSavedBillSearchPrompt();
+    }
   });
 
   document.getElementById("copyBillingAddress").addEventListener("change", handleCopyBillingToggle);
@@ -171,7 +180,8 @@ async function handleSaveBill() {
     renderBillPreview(currentBill);
     saveBillLocally(currentBill);
     savedLocally = true;
-    renderSavedBills(getSavedBills());
+    savedBillSearchInput.value = currentBill.order.number;
+    renderSavedBillDetails(currentBill);
 
     showMessages([
       { type: "success", text: "Bill saved locally." },
@@ -973,25 +983,213 @@ function buildGoogleSheetPayload(bill) {
   };
 }
 
-// Show bills saved in localStorage and attach View/Delete button actions.
+// Keep a local cache for order-number suggestions, but show details only after a search.
 async function refreshSavedBills() {
-  savedBillsList.innerHTML = '<p class="empty-state">Loading saved bills...</p>';
+  savedBillsList.innerHTML = '<p class="empty-state">Connecting to Google Sheet...</p>';
 
   try {
     const savedBills = await getSavedBillsFromGoogleSheet();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(savedBills));
     document.getElementById("orderNumber").value = getNextOrderNumber();
-    renderSavedBills(savedBills);
+    renderSavedBillSearchPrompt(savedBills.length);
   } catch (error) {
     console.error(error);
-    renderSavedBills(getSavedBills());
+    renderSavedBillSearchPrompt(getSavedBills().length, true);
     showMessages([
       {
         type: "info",
-        text: "Could not load saved bills from Google Sheet. Showing browser localStorage records."
+        text: "Could not load saved bills from Google Sheet. Search will use browser localStorage until Apps Script is updated."
       }
     ]);
   }
+}
+
+async function handleSavedBillSearch(event) {
+  event.preventDefault();
+
+  const orderNumber = savedBillSearchInput.value.trim();
+
+  if (!orderNumber) {
+    renderSavedBillSearchPrompt();
+    showMessages([{ type: "error", text: "Enter an Order Number to search." }]);
+    return;
+  }
+
+  setSavedBillSearchState(true);
+  savedBillsList.innerHTML = `<p class="empty-state">Searching ${escapeHtml(orderNumber)} in Google Sheet...</p>`;
+
+  try {
+    const bill = await getSavedBillByOrderNumber(orderNumber);
+
+    if (!bill) {
+      renderSavedBillNotFound(orderNumber);
+      showMessages([{ type: "info", text: `No Google Sheet record found for ${orderNumber}.` }]);
+      return;
+    }
+
+    saveBillLocally(bill);
+    renderSavedBillDetails(bill);
+    showMessages([{ type: "success", text: `Loaded ${bill.order.number} from Google Sheet.` }]);
+  } catch (error) {
+    console.error(error);
+
+    const localBill = findSavedBillLocally(orderNumber);
+
+    if (localBill) {
+      renderSavedBillDetails(localBill, "Browser localStorage copy");
+      showMessages([
+        {
+          type: "info",
+          text: `Google Sheet search failed, so I loaded the browser copy for ${localBill.order.number}. ${error.message}`
+        }
+      ]);
+      return;
+    }
+
+    renderSavedBillSearchError(orderNumber, error.message);
+    showMessages([
+      {
+        type: "error",
+        text: `${error.message} Paste the latest google-apps-script.js code into Apps Script and deploy a new version.`
+      }
+    ]);
+  } finally {
+    setSavedBillSearchState(false);
+  }
+}
+
+function renderSavedBillSearchPrompt(count = getSavedBills().length, isLocalFallback = false) {
+  const sourceText = isLocalFallback ? "browser localStorage records" : "Google Sheet records";
+  const countText = count > 0
+    ? `${count} ${sourceText} available for search.`
+    : "Search by Order Number to load a saved bill.";
+
+  savedBillsList.innerHTML = `
+    <div class="saved-bill-placeholder">
+      <strong>Enter an Order Number above.</strong>
+      <p>${escapeHtml(countText)}</p>
+    </div>
+  `;
+}
+
+function renderSavedBillNotFound(orderNumber) {
+  savedBillsList.innerHTML = `
+    <div class="saved-bill-placeholder">
+      <strong>No order found.</strong>
+      <p>Could not find ${escapeHtml(orderNumber)} in the connected Google Sheet.</p>
+    </div>
+  `;
+}
+
+function renderSavedBillSearchError(orderNumber, message) {
+  savedBillsList.innerHTML = `
+    <div class="saved-bill-placeholder saved-bill-placeholder-error">
+      <strong>Could not search Google Sheet.</strong>
+      <p>${escapeHtml(orderNumber)} was not loaded. ${escapeHtml(message)}</p>
+    </div>
+  `;
+}
+
+function renderSavedBillDetails(bill, sourceLabel = "Google Sheet record") {
+  const productsMarkup = bill.products
+    .map(
+      (product) => `
+        <tr>
+          <td>${escapeHtml(product.name || "Product")}</td>
+          <td>${formatQuantity(product.quantity)}</td>
+          <td>${formatCurrency(product.unitPrice || 0)}</td>
+          <td>${formatCurrency(product.total || 0)}</td>
+        </tr>
+      `
+    )
+    .join("");
+
+  savedBillsList.innerHTML = `
+    <article class="saved-bill-item saved-bill-detail">
+      <div class="saved-bill-detail-header">
+        <div>
+          <p class="eyebrow">${escapeHtml(sourceLabel)}</p>
+          <h3>${escapeHtml(bill.order.number)}</h3>
+        </div>
+        <div class="saved-bill-actions">
+          <button type="button" class="button button-light" data-view-bill="${escapeAttribute(bill.order.number)}">View Bill</button>
+          <button type="button" class="button button-danger" data-delete-bill="${escapeAttribute(bill.order.number)}">Delete Bill</button>
+        </div>
+      </div>
+
+      <dl class="saved-bill-details-grid">
+        ${renderSavedBillDetail("Saved at", formatDateTimeForDisplay(bill.savedAt))}
+        ${renderSavedBillDetail("Order date", formatDateForDisplay(bill.order.date))}
+        ${renderSavedBillDetail("Customer name", bill.customer.name)}
+        ${renderSavedBillDetail("Customer phone", bill.customer.phone)}
+        ${renderSavedBillDetail("Customer email", bill.customer.email || "N/A")}
+        ${renderSavedBillDetail("City", bill.customer.city || "N/A")}
+        ${renderSavedBillDetail("Area", bill.customer.area || "N/A")}
+        ${renderSavedBillDetail("Vendor", bill.order.vendorName || "N/A")}
+        ${renderSavedBillDetail("Payment method", bill.order.paymentMethod || "N/A")}
+        ${renderSavedBillDetail("Shipping type", bill.order.shippingType || "N/A")}
+        ${renderSavedBillDetail("Warranty period", bill.order.warrantyPeriod || "N/A")}
+        ${renderSavedBillDetail("Total amount", formatCurrency(bill.totalAmount))}
+      </dl>
+
+      <div class="saved-bill-product-block">
+        <h4>Product Details</h4>
+        <div class="table-wrap">
+          <table class="saved-bill-product-table">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Quantity</th>
+                <th>Unit price</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>${productsMarkup}</tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="saved-bill-total-grid">
+        ${renderSavedBillDetail("Subtotal", formatCurrency(bill.subtotal))}
+        ${renderSavedBillDetail("Shipping charge", formatCurrency(bill.order.shippingCharge))}
+        ${renderSavedBillDetail("Total amount", formatCurrency(bill.totalAmount))}
+      </div>
+
+      <div class="saved-bill-address-grid">
+        <div>
+          <h4>Billing Address</h4>
+          <p>${escapeHtml(bill.customer.billingAddress || "N/A")}</p>
+          <p>${escapeHtml(joinLocation(bill.customer.city, bill.customer.area) || "N/A")}</p>
+        </div>
+        <div>
+          <h4>Shipping Address</h4>
+          <p>${escapeHtml(bill.customer.shippingAddress || "N/A")}</p>
+          <p>${escapeHtml(joinLocation(bill.customer.city, bill.customer.area) || "N/A")}</p>
+        </div>
+      </div>
+    </article>
+  `;
+
+  bindSavedBillActionButtons();
+}
+
+function renderSavedBillDetail(label, value) {
+  return `
+    <div>
+      <dt>${escapeHtml(label)}</dt>
+      <dd>${escapeHtml(value || "N/A")}</dd>
+    </div>
+  `;
+}
+
+function bindSavedBillActionButtons() {
+  savedBillsList.querySelectorAll("[data-view-bill]").forEach((button) => {
+    button.addEventListener("click", () => viewSavedBill(button.dataset.viewBill));
+  });
+
+  savedBillsList.querySelectorAll("[data-delete-bill]").forEach((button) => {
+    button.addEventListener("click", () => deleteSavedBill(button.dataset.deleteBill));
+  });
 }
 
 function renderSavedBills(savedBills = getSavedBills()) {
@@ -1030,11 +1228,52 @@ function renderSavedBills(savedBills = getSavedBills()) {
 
 async function getSavedBillsFromGoogleSheet() {
   const result = await callGoogleScriptJsonp({ action: "listBills" }, 15000);
-  const bills = Array.isArray(result.bills) ? result.bills : [];
 
-  return bills.map(convertSheetRowToBill).sort((a, b) => {
+  if (!Array.isArray(result.bills)) {
+    throw new Error("Google Apps Script does not support saved bill loading yet.");
+  }
+
+  return result.bills.map(convertSheetRowToBill).sort((a, b) => {
     return new Date(b.savedAt || 0).getTime() - new Date(a.savedAt || 0).getTime();
   });
+}
+
+async function getSavedBillByOrderNumber(orderNumber) {
+  const normalizedOrderNumber = String(orderNumber || "").trim().toLowerCase();
+
+  try {
+    const result = await callGoogleScriptJsonp({
+      action: "getBill",
+      orderNumber
+    }, 15000);
+
+    if (result.exists === false) {
+      return null;
+    }
+
+    if (result.bill) {
+      return convertSheetRowToBill(result.bill);
+    }
+  } catch (error) {
+    if (!findSavedBillLocally(orderNumber)) {
+      throw error;
+    }
+  }
+
+  const savedBills = await getSavedBillsFromGoogleSheet();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(savedBills));
+
+  return savedBills.find((bill) => {
+    return String(bill.order.number || "").trim().toLowerCase() === normalizedOrderNumber;
+  }) || null;
+}
+
+function findSavedBillLocally(orderNumber) {
+  const normalizedOrderNumber = String(orderNumber || "").trim().toLowerCase();
+
+  return getSavedBills().find((bill) => {
+    return String(bill.order.number || "").trim().toLowerCase() === normalizedOrderNumber;
+  }) || null;
 }
 
 function convertSheetRowToBill(row) {
@@ -1119,7 +1358,7 @@ function parseSheetProductDetails(value) {
 }
 
 function viewSavedBill(orderNumber) {
-  const bill = getSavedBills().find((item) => item.order.number === orderNumber);
+  const bill = findSavedBillLocally(orderNumber);
 
   if (!bill) {
     showMessages([{ type: "error", text: "Saved bill was not found." }]);
@@ -1150,7 +1389,10 @@ async function deleteSavedBill(orderNumber) {
       throw new Error("Google Sheet did not confirm this Order ID was deleted.");
     }
 
-    const remainingBills = getSavedBills().filter((bill) => bill.order.number !== orderNumber);
+    const normalizedOrderNumber = String(orderNumber || "").trim().toLowerCase();
+    const remainingBills = getSavedBills().filter((bill) => {
+      return String(bill.order.number || "").trim().toLowerCase() !== normalizedOrderNumber;
+    });
     localStorage.setItem(STORAGE_KEY, JSON.stringify(remainingBills));
     refreshSavedBills();
 
@@ -1253,6 +1495,11 @@ function setTestSheetState(isTesting) {
   testSheetBtn.textContent = isTesting ? "Testing..." : "Test Sheet Connection";
 }
 
+function setSavedBillSearchState(isSearching) {
+  savedBillSearchBtn.disabled = isSearching;
+  savedBillSearchBtn.textContent = isSearching ? "Searching..." : "Search Order";
+}
+
 function showMessages(messages) {
   messageArea.innerHTML = messages
     .map((message) => `<div class="message message-${message.type}">${escapeHtml(message.text)}</div>`)
@@ -1315,6 +1562,26 @@ function formatDateForDisplay(value) {
     year: "numeric",
     month: "short",
     day: "numeric"
+  });
+}
+
+function formatDateTimeForDisplay(value) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+
+  return date.toLocaleString("en-BD", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
   });
 }
 
